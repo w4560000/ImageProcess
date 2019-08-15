@@ -1,0 +1,50 @@
+﻿@{
+    ViewBag.Title = "Index";
+}
+<h2>Index</h2>
+<video id="video" autoplay width="560" height="480"></video>
+<input type="button" value="拍照" />
+
+<script>
+    $(document).ready(init);
+
+    function init() {
+        var video = document.getElementById('video');
+        var mediaConfig = { video: true };
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            navigator.mediaDevices.getUserMedia(mediaConfig).then(function (stream) {
+                video.srcObject = stream;
+            });
+        }
+
+        $("input[type='button']").click(function () {
+            shoot(); //執行拍照
+        });
+
+    }
+
+    //執行拍照
+    function shoot() {
+        var canvas = capture($("#video")[0]);
+
+        //$("#result").empty();
+        //$("#result").append(canvas); //呈現圖像(拍照結果)
+        var imgData = canvas.toDataURL("image/jpg");
+        var base64String = imgData.substr(22); //取得base64字串
+
+        $.post("Home/SaveImage", { base64String });
+    }
+
+    //從video元素抓取圖像到canvas
+    function capture(video) {
+
+        var canvas = document.createElement('canvas'); //建立canvas js DOM元素
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0);
+        return canvas;
+    }
+
+</script>
