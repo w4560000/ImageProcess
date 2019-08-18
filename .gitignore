@@ -251,3 +251,7 @@ Doc/
 # Static contents bundles
 /**/Scripts/bundle/*.js
 /**/Content/bundle/*.css
+
+
+*.jpg
+*.webm

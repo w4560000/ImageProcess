@@ -1,50 +1,255 @@
 ﻿@{
     ViewBag.Title = "Index";
 }
-<h2>Index</h2>
-<video id="video" autoplay width="560" height="480"></video>
-<input type="button" value="拍照" />
+<br />
+<br />
+<br />
+<h1>小房間蒐證的秘密武器</h1>
+<button class="btn btn-success" id="open">啟動相機</button>
+<button class="btn btn-danger" id="takePhoto" disabled>拍照</button>
+<button class="btn btn-danger" id="recordVideo" disabled>開始錄影</button>
+<button class="btn btn-danger" id="pauseVideo" disabled>暫停錄影</button>
+<button class="btn btn-danger" id="endVideo" disabled>結束錄影</button>
+<button class="btn btn-danger" id="deleteVideo" disabled>刪除影片</button>
+<hr />
+
+<div style="display:flex; flex-direction: row;">
+    <video id="video" style="border: 1px solid rgb(15, 158, 238); height: 480px; width: 640px; left:0px;"></video>
+    <div id="photoArea" style="display:flex; height:480px; width:640px; flex-direction:column; align-content:stretch; flex-wrap:wrap;">
+    </div>
+</div>
+
+<div id="container" style="padding:1em 2em; display:none;">
+    <hr />
+    <strong id="percentage">Video upload progress:</strong>
+    <progress></progress>
+    <hr />
+    <video id="savedVideo" controls autoplay></video>
+</div>
 
 <script>
-    $(document).ready(init);
 
-    function init() {
-        var video = document.getElementById('video');
-        var mediaConfig = { video: true };
+    // 頁面載入初始化
+    $(document).ready(function () {
+        initJqueryPlugin();
+    });
+    var video = $("#video");
+    var container = $("#container");
+    var recordVideo;
+    var fileName;
+    var blobs = [];
 
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    $("#open").click(function () {
+        var mediaConfig = { video: true, audio: true };
+
             navigator.mediaDevices.getUserMedia(mediaConfig).then(function (stream) {
-                video.srcObject = stream;
+                video.prop("srcObject", stream);
+                video.prop("autoplay", true);
+                openButtonStatus();
             });
-        }
+        
+    });
+    $("#takePhoto").click(function () {
+        capture().then(res => {
+            var data = new FormData();
+            data.append("sample", res);
 
-        $("input[type='button']").click(function () {
-            shoot(); //執行拍照
+            $.ajax({
+                url: '/Home/SaveImage',
+                type: "POST",
+                contentType: false,
+                processData: false,
+                data: data,
+                success: function (result) {
+                    $('#photoArea').append('<img style="height:120px; width:160px;" src="' +
+                        document.location.origin + '/uploads/' + result.replace(/"/g, '') + '"/>');
+                }
+            });
+
+        });
+    });
+
+    $("#recordVideo").click(function () {
+        $.each($('#video'), function () {
+            this.controls = true;
+        }); 
+
+        $('h1').html('影片錄製時間: 0 秒   檔案大小: 0 KB');
+
+        if (recordVideo === undefined) {
+            navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: true
+            }).then(function (stream) {
+                $("#video").prop("srcObject", stream);
+                recordVideo = RecordRTC(stream, {
+                    recorderType: MediaStreamRecorder,
+                    mimeType: 'video/webm',
+                    timeSlice: 1000,
+                    ondataavailable: function (blob) {
+                        blobs.push(blob);
+
+                        var size = 0;
+                        blobs.forEach(function (b) {
+                            size += b.size;
+                        });
+
+                        $('h1').html('影片錄製時間: ' + blobs.length + ' 秒   檔案大小: ' + bytesToSize(size));
+                    }
+                });
+
+                recordVideo.startRecording();
+                recordVideo.camera = stream;
+            });
+
+            recordVideoButtonStatus();
+        }
+        else {
+            recordVideo.resumeRecording();
+            $('#video').trigger('play');
+            resumeVideoButtonStatus();
+        }
+    });
+
+    $('#pauseVideo').click(function () {
+        recordVideo.pauseRecording();
+        $('#video').trigger('pause');
+        pauseVideoButtonStatus();
+    });
+
+    $("#endVideo").click(function () {
+        fileName = "還敢下來阿冰鳥" + '.webm';
+
+        var blob = new File(blobs, 'video.webm', {
+            type: 'video/webm'
         });
 
-    }
+        $("#video").prop("srcObject", null);
+        $("#video").prop("src", null);
 
-    //執行拍照
-    function shoot() {
-        var canvas = capture($("#video")[0]);
+        PostBlob(blob);
 
-        //$("#result").empty();
-        //$("#result").append(canvas); //呈現圖像(拍照結果)
-        var imgData = canvas.toDataURL("image/jpg");
-        var base64String = imgData.substr(22); //取得base64字串
+        recordVideo.camera.stop();
+        endVideoButtonStatus();
+    });
 
-        $.post("Home/SaveImage", { base64String });
-    }
+    $('#deleteVideo').click(function () {
+        $(this).disableButton();
+        if (!fileName) return;
+        var formData = new FormData();
+        formData.append('delete-file', fileName);
+
+        $.ajax({
+            url: "DeleteFile",
+            type: "POST",
+            processData: false,
+            contentType: false,
+            data: formData,
+            success: function () {
+            },
+        });
+
+        fileName = null;
+        deleteVideoButtonStatus();
+    });
 
     //從video元素抓取圖像到canvas
-    function capture(video) {
+    function capture() {
 
         var canvas = document.createElement('canvas'); //建立canvas js DOM元素
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
         var ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0);
-        return canvas;
+        canvas.width = video[0].videoWidth;
+        canvas.height = video[0].videoHeight;
+        ctx.drawImage(video[0], 0, 0);
+       // return canvas;
+
+        return new Promise((res, rej) => {
+            canvas.toBlob(res, 'image/jpeg'); // request a Blob from the canvas
+        });
     }
 
+    function PostBlob(blob) {
+        // FormData
+        var formData = new FormData();
+        formData.append('video-filename', fileName);
+        formData.append('video-blob', blob);
+
+        $.ajax({
+            url: 'PostRecordedAudioVideo',
+            type: "POST",
+            processData: false,
+            contentType: false,
+            data: formData,
+            success: function (data) {
+                $('#savedVideo').prop('src', document.location.origin + '/uploads/' + data.replace(/"/g, ''));
+            },
+            xhr: function () {
+                var xhr = $.ajaxSettings.xhr();
+
+                xhr.upload.onloadstart = function () {
+                    $('#percentage').html('Upload started...');
+                };
+
+                xhr.upload.onprogress = function (event) {
+                    $('progress').prop('max', event.total);
+                    $('progress').val(event.loaded);
+                    $('#percentage').html('Upload Progress ' + Math.round(event.loaded / event.total * 100) + '%');
+                };
+
+                xhr.upload.onload = function () {
+                    $('#percentage').html('Saved!');
+                }
+                return xhr;
+
+            }
+        });
+    };
+
+    function openButtonStatus() {
+        $('#open').disableButton();
+        $('#takePhoto').enableButton();
+        $('#recordVideo').enableButton();
+    }
+
+    function recordVideoButtonStatus() {
+        $('#recordVideo').disableButton();
+        $('#pauseVideo').enableButton();
+        $('#endVideo').enableButton();
+    }
+
+    function resumeVideoButtonStatus() {
+        $('#recordVideo').disableButton();
+        $('#pauseVideo').enableButton();
+    }
+
+    function pauseVideoButtonStatus() {
+        $('#recordVideo').enableButton();
+        $('#pauseVideo').disableButton();
+    }
+
+    function endVideoButtonStatus() {
+        $('#open').enableButton();
+        $('#takePhoto').disableButton();
+        $('#recordVideo').disableButton();
+        $('pauseVideo').disableButton();
+        $('#endVideo').disableButton();
+        $('#container').css('display', 'block');
+        $('#deleteVideo').enableButton();
+    }
+
+    function deleteVideoButtonStatus() {
+        $('pauseVideo').disableButton();
+        $('#container').css('display', 'none');
+    }
+
+    // 初始化 JqueryPlugin
+    function initJqueryPlugin() {
+        $.fn.enableButton = function () {
+            $(this).removeClass('btn-danger').addClass('btn-success').prop('disabled', false);
+        }
+
+        $.fn.disableButton = function () {
+            $(this).removeClass('btn-success').addClass('btn-danger').prop('disabled', true);
+        }
+    }
 </script>

@@ -1,8 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using ImageProcess.helper;
+using System;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Web;
 using System.Web.Mvc;
 
@@ -10,80 +9,55 @@ namespace ImageProcess.Controllers
 {
     public class HomeController : Controller
     {
+        private readonly string basePath = AppDomain.CurrentDomain.BaseDirectory + "uploads";
+
         public ActionResult Index()
         {
             return this.View();
         }
 
-        //public void Capture()
-        //{
-        //    var stream = this.Request.InputStream;
-        //    string dump;
-
-        //    using (var reader = new StreamReader(stream))
-        //        dump = reader.ReadToEnd();
-
-        //    var path = this.Server.MapPath("~/test.jpg");
-        //    System.IO.File.WriteAllBytes(path, this.String_To_Bytes2(dump));
-        //}
-
-        //private byte[] String_To_Bytes2(string strInput)
-        //{
-        //    int numBytes = (strInput.Length) / 2;
-        //    byte[] bytes = new byte[numBytes];
-
-        //    for (int x = 0; x < numBytes; ++x)
-        //    {
-        //        bytes[x] = Convert.ToByte(strInput.Substring(x * 2, 2), 16);
-        //    }
-
-        //    return bytes;
-        //}
-
         /// <summary>
         /// 儲存照片
         /// </summary>
-        /// <param name="base64String">base64字串</param>
+        /// <returns>檔名</returns>
+        public ActionResult SaveImage()
+        {
+            string fileName = DateTime.Now.ToString("yyyyMMdd_hhmmssfff") + ".jpg";
+            HttpPostedFileBase file = this.Request.Files[0]; 
+            file.SaveAs(Path.Combine(this.basePath, fileName));
+
+            return this.Json(fileName);
+        }
+
+        /// <summary>
+        /// 儲存影片
+        /// </summary>
         /// <returns></returns>
-        public ActionResult SaveImage(string base64String)
+        [HttpPost]
+        public ActionResult PostRecordedAudioVideo()
         {
-            Image img = this.Base64ToImage(base64String);
-            img.Save(@"D:\test.jpg");
+            foreach (string upload in this.Request.Files)
+            {
+                var file = this.Request.Files[upload];
+                if (file == null)
+                    continue;
 
-            return this.View();
+                file.SaveAs(Path.Combine(this.basePath, this.Request.Form[0]));
+            }
+
+            return this.Json(this.Request.Form[0]);
         }
 
         /// <summary>
-        /// 把base64字串轉成Image物件
+        /// 刪除影片
         /// </summary>
-        /// <param name="base64String">base64字串</param>
-        /// <returns>Image物件</returns>
-        public Image Base64ToImage(string base64String)
+        /// <returns></returns>
+        [HttpPost]
+        public ActionResult DeleteFile()
         {
-            // Convert Base64 String to byte[]
-            byte[] imageBytes = Convert.FromBase64String(base64String);
-            MemoryStream ms = new MemoryStream(imageBytes, 0, imageBytes.Length);
+            new FileInfo(Path.Combine(this.basePath, this.Request.Form["delete-file"])).Delete();
 
-            // Convert byte[] to Image
-            ms.Write(imageBytes, 0, imageBytes.Length);
-            Image image = Image.FromStream(ms, true);
-
-            return image;
-        }
-
-        /// <summary>
-        /// 把base64字串轉成Bitmap物件
-        /// </summary>
-        /// <param name="base64String">base64字串</param>
-        /// <returns>Bitmap物件</returns>
-        public Bitmap Base64ToBitmap(string base64String)
-        {
-            byte[] arr = Convert.FromBase64String(base64String);
-            MemoryStream ms = new MemoryStream(arr);
-            Bitmap bmp = new Bitmap(ms);
-            ms.Close();
-
-            return bmp;
+            return this.Json(true);
         }
     }
 }
